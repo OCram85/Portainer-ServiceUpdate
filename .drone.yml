@@ -9,7 +9,7 @@ trigger:
 
 steps:
   - name: "Build binary"
-    image: golang:1.15-buster
+    image: golang:1.17.5-buster
     commands:
       - CGO_ENABLED=0 go build -o ServiceUpdater
 
