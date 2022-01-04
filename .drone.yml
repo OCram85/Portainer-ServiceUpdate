@@ -1,0 +1,121 @@
+---
+kind: pipeline
+type: docker
+name: "Build Pipeline"
+trigger:
+  event:
+    exclude:
+      - pull_request
+
+steps:
+  - name: "Build binary"
+    image: golang:1.15-buster
+    commands:
+      - CGO_ENABLED=0 go build -o ServiceUpdater
+
+  - name: "Build and Push (master)"
+    image: plugins/docker
+    settings:
+      username:
+        from_secret: hub_user
+      password:
+        from_secret: hub_passwd
+      repo: ocram85/portainer-serviceupdate
+      #dockerfile: src/Dockerfile
+      tags: latest
+      #no_cache: true
+    when:
+      branch:
+        - master
+
+  - name: "Build (${DRONE_BRANCH})"
+    image: plugins/docker
+    settings:
+      username:
+        from_secret: hub_user
+      password:
+        from_secret: hub_passwd
+      repo: ocram85/portainer-serviceupdate
+      #dockerfile: src/Dockerfile
+      tags: "${DRONE_BRANCH}"
+      #no_cache: true
+    when:
+      branch:
+        exclude:
+          - master
+
+  - name: "Trivy dev (${DRONE_BRANCH})"
+    image: aquasec/trivy
+    commands:
+      - trivy image ocram85/portainer-serviceupdate:${DRONE_BRANCH}
+    when:
+      branch:
+        exclude:
+          - master
+
+  - name: "Trivy latest"
+    image: aquasec/trivy
+    commands:
+      - trivy image ocram85/portainer-serviceupdate:latest
+    when:
+      branch:
+        - master
+
+---
+kind: pipeline
+type: docker
+name: "Test pipeline"
+
+depends_on:
+  - "Build Pipeline"
+
+trigger:
+  event:
+    exclude:
+      - pull_request
+
+steps:
+  - name: "Test missing uri"
+    image: ocram85/portainer-serviceupdate:${DRONE_BRANCH}
+    failure: ignore
+    settings:
+      VERBOSE: true
+    when:
+      branch:
+        exclude:
+          - master
+
+  - name: "Test missing token"
+    image: ocram85/portainer-serviceupdate:${DRONE_BRANCH}
+    failure: ignore
+    settings:
+      VERBOSE: true
+      URI: "https://portainer.ocram85.com"
+    when:
+      branch:
+        exclude:
+          - master
+
+  - name: "Test update failure"
+    image: ocram85/portainer-serviceupdate:${DRONE_BRANCH}
+    failure: ignore
+    settings:
+      VERBOSE: true
+      URI: "https://portainer.ocram85.com"
+      TOKEN: "fooo"
+    when:
+      branch:
+        exclude:
+          - master
+
+  - name: "Test Service Update"
+    image: ocram85/portainer-serviceupdate:${DRONE_BRANCH}
+    settings:
+      VERBOSE: true
+      URI: "https://portainer.ocram85.com"
+      TOKEN:
+        from_secret: TOKEN
+    when:
+      branch:
+        exclude:
+          - master
